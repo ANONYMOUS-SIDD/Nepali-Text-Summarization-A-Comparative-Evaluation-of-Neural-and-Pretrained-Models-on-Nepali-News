@@ -1,47 +1,29 @@
-# Nepali News Dataset Combiner
-# This Script Combines Multiple CSV Files Into A Single Clean Dataset
-# The Output File Has Columns id, content, And summary
-
-# Import Required Libraries
-import pandas as pd
-import hashlib
-import re
-import os
 import glob
+import hashlib
+import os
+import re
+
+import pandas as pd
+
 
 class DatasetCombiner:
+    """Merge, normalize, deduplicate, and export Nepali news CSV datasets into a unified corpus."""
+
     def __init__(self):
-        # Store All Extracted Articles Here Before Deduplication
+        """Initialize the article buffer and deduplication hash registry."""
         self.all_data = []
-        # Set Of Content Hashes To Prevent Duplicate Entries
         self.seen_hashes = set()
 
     def find_csv_files(self, search_patterns):
-        """
-        Search For CSV Files In Several Common Locations
-        It Checks The Current Folder, A CSV Files Subfolder,
-        The Parent Directory, And A Parent CSV Files Folder
-        """
+        """Search candidate directories for matching CSV files while preserving discovery order."""
         found_files = []
 
-        # Check Current Directory
         for pattern in search_patterns:
-            matches = glob.glob(pattern)
-            found_files.extend(matches)
+            found_files.extend(glob.glob(pattern))
+            found_files.extend(glob.glob(f"CSV Files/{pattern}"))
+            found_files.extend(glob.glob(f"../{pattern}"))
+            found_files.extend(glob.glob(f"../CSV Files/{pattern}"))
 
-        # Check CSV Files Subfolder
-        for pattern in search_patterns:
-            matches = glob.glob(f"CSV Files/{pattern}")
-            found_files.extend(matches)
-
-        # Check Parent Directory
-        for pattern in search_patterns:
-            matches = glob.glob(f"../{pattern}")
-            found_files.extend(matches)
-            matches = glob.glob(f"../CSV Files/{pattern}")
-            found_files.extend(matches)
-
-        # Remove Duplicate File Paths While Preserving Order
         seen = set()
         unique_files = []
         for file in found_files:
@@ -52,10 +34,7 @@ class DatasetCombiner:
         return unique_files
 
     def load_and_combine_csvs(self, file_paths):
-        """
-        Load All Found CSV Files And Extract The Content And Summary Columns
-        It Supports Multiple Column Naming Conventions (content/input, summary/output)
-        """
+        """Load input CSVs, map content and summary columns, filter records, and deduplicate."""
         print("Combining Nepali News Datasets")
 
         for file_path in file_paths:
@@ -66,18 +45,16 @@ class DatasetCombiner:
             print(f"Loading: {file_path}")
 
             try:
-                df = pd.read_csv(file_path, encoding='utf-8-sig')
+                df = pd.read_csv(file_path, encoding="utf-8-sig")
 
-                # Identify The Content Column
                 content_col = None
-                for col in ['content', 'Full_Content', 'Content', 'article_content', 'content_preview', 'input']:
+                for col in ["content", "Full_Content", "Content", "article_content", "content_preview", "input"]:
                     if col in df.columns:
                         content_col = col
                         break
 
-                # Identify The Summary Column
                 summary_col = None
-                for col in ['summary', 'Summary', 'article_summary', 'Summary_Text', 'output']:
+                for col in ["summary", "Summary", "article_summary", "Summary_Text", "output"]:
                     if col in df.columns:
                         summary_col = col
                         break
@@ -91,7 +68,6 @@ class DatasetCombiner:
                     try:
                         content = str(row[content_col]) if pd.notna(row[content_col]) else ""
 
-                        # Use Existing Summary Or Generate One
                         if summary_col and pd.notna(row[summary_col]):
                             summary = str(row[summary_col])
                         else:
@@ -100,11 +76,11 @@ class DatasetCombiner:
                         content = self._clean_text(content)
                         summary = self._clean_text(summary)
 
-                        # Only Keep Articles That Are Long Enough And Contain Nepali Text
                         if len(content) >= 200 and len(summary) >= 20 and self._has_nepali(content):
-                            self.all_data.append({'content': content, 'summary': summary})
+                            self.all_data.append({"content": content, "summary": summary})
                             extracted += 1
-                    except:
+                    except Exception:
+                        # Skip malformed rows so one bad record does not abort the file.
                         continue
 
                 print(f"Extracted {extracted} Articles From {file_path}")
@@ -119,11 +95,8 @@ class DatasetCombiner:
         return self.all_data
 
     def _generate_summary(self, content):
-        """
-        Generate A Summary From The First Meaningful Sentence
-        This Is Used When No Summary Column Is Present In The CSV
-        """
-        sentences = re.split(r'[।\.]', content)
+        """Extract a bounded lead sentence as a fallback summary when no summary column exists."""
+        sentences = re.split(r"[।\.]", content)
         for sent in sentences[:3]:
             sent = sent.strip()
             if 30 < len(sent) < 400:
@@ -131,68 +104,55 @@ class DatasetCombiner:
         return content[:200] if len(content) > 200 else content
 
     def _clean_text(self, text):
-        """
-        Clean Text By Removing URLs, Emails, And Extra Spaces
-        Keeps Nepali Script, Basic Latin Letters, Digits, And Common Punctuation
-        """
+        """Strip URLs, emails, and disallowed characters while preserving Devanagari and ASCII."""
         if not isinstance(text, str):
             return ""
 
-        text = re.sub(r'\s+', ' ', text)
-        text = re.sub(r'http\S+|www\S+|https\S+', '', text)
-        text = re.sub(r'\S+@\S+', '', text)
-        text = re.sub(r'[^\u0900-\u097F\s\.\,\!\?।॥a-zA-Z0-9]', '', text)
-        text = ' '.join(text.split())
+        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"http\S+|www\S+|https\S+", "", text)
+        text = re.sub(r"\S+@\S+", "", text)
+        text = re.sub(r"[^\u0900-\u097F\s\.\,\!\?।॥a-zA-Z0-9]", "", text)
+        text = " ".join(text.split())
 
         return text.strip()
 
     def _has_nepali(self, text):
-        """
-        Check That At Least 20 Percent Of The Non-Space Characters Are Nepali
-        This Filters Out Articles That Are Mostly In English
-        """
-        text_clean = text.replace(' ', '')
+        """Return True if at least 20% of non-whitespace characters belong to Devanagari."""
+        text_clean = text.replace(" ", "")
         if not text_clean:
             return False
 
-        nepali_chars = len(re.findall(r'[\u0900-\u097F]', text))
+        nepali_chars = len(re.findall(r"[\u0900-\u097F]", text))
         return (nepali_chars / len(text_clean)) >= 0.2
 
     def _remove_duplicates(self):
-        """
-        Remove Duplicate Articles Based On A Hash Of The First 500 Characters
-        This Prevents The Same Article From Appearing Multiple Times
-        """
+        """Deduplicate records using an MD5 hash of the first 500 characters of content."""
         unique_data = []
         for item in self.all_data:
-            content_hash = hashlib.md5(item['content'][:500].encode('utf-8')).hexdigest()
+            # Prefix hashing catches near-identical wire or syndicated stories with trailing edits.
+            content_hash = hashlib.md5(item["content"][:500].encode("utf-8")).hexdigest()
             if content_hash not in self.seen_hashes:
                 self.seen_hashes.add(content_hash)
                 unique_data.append(item)
         self.all_data = unique_data
 
     def save_final_dataset(self, output_file="Nepali_Text_Summarizer_Dataset.csv"):
-        """
-        Save The Combined And Cleaned Dataset To A CSV File
-        The Output File Includes An id Column, content, And summary
-        """
+        """Write the deduplicated dataset with sequential IDs to a UTF-8 BOM CSV file."""
         if not self.all_data:
             print("No Data To Save")
             return False
 
         df = pd.DataFrame(self.all_data)
-        df.insert(0, 'id', range(1, len(df) + 1))
-        df.to_csv(output_file, index=False, encoding='utf-8-sig')
+        df.insert(0, "id", range(1, len(df) + 1))
+        df.to_csv(output_file, index=False, encoding="utf-8-sig")
 
         print(f"Dataset Saved: {output_file} ({len(df)} Articles)")
         return True
 
 
-# Main Execution
 if __name__ == "__main__":
     combiner = DatasetCombiner()
 
-    # Look For CSV Files In Common Locations
     csv_files = []
     file_names = ["kantipur.csv", "khabarhub.csv", "nepali_news.csv", "onlineKhabar.csv", "ratopati.csv"]
     search_locations = [".", "CSV Files", "..", "../CSV Files"]
