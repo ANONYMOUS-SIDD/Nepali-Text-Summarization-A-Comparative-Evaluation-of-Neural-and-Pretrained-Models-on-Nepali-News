@@ -277,8 +277,8 @@ Kathmandu University, Dhulikhel, Nepal.
 
 ### Authors
 
-- **Prasiddha Timalsina**
 - **Siddhant Timalsina**
+- **Prasiddha Timalsina**
 - Bipesh Subedi*
 - Bal Krishna Bal*
 
@@ -294,7 +294,7 @@ If you use this research, methodology, or its findings in your academic work, pl
 
 **Title:** Nepali Text Summarization: A Comparative Evaluation of Neural and Pretrained Models on Nepali News
 
-**Authors:** Prasiddha Timalsina, Siddhant Timalsina, Bipesh Subedi, and Bal Krishna Bal.
+**Authors:** Siddhant Timalsina, Prasiddha Timalsina, Bipesh Subedi, and Bal Krishna Bal.
 
 *Publication details and DOI will be added following publication.*
 
